@@ -1,0 +1,17 @@
+# Watchdog V3 项目 .gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 运行时自动生成的文件（不提交）
+检测数据库.sqlite
+watchdog.log
+alarm_history.csv
+.watchdog_progress.json
+
+# 临时文件
+*.bak
+tmp/
+_temp/

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Watchdog V3 — 核心时序图</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#020617; color:#e2e8f0;
+    font-family:'Noto Sans SC','JetBrains Mono',sans-serif;
+    display:flex; justify-content:center; align-items:center;
+    min-height:100vh; padding:20px;
+  }
+  .container {
+    max-width:1260px; width:100%;
+    background:#0f172a; border-radius:16px; border:1px solid #1e293b;
+    padding:30px; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+  }
+  .header{text-align:center;margin-bottom:20px;}
+  .header h1{font-size:20px;font-weight:700;color:#f1f5f9;}
+  .header p{font-size:12px;color:#64748b;margin-top:4px;}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;animation:pulse 2s infinite;vertical-align:middle;background:#34d399;box-shadow:0 0 8px #34d39966;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  svg{width:100%;height:auto;display:block;}
+  svg text{
+    font-family:'JetBrains Mono','Noto Sans SC','Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif !important;
+    dominant-baseline:central;
+  }
+
+  .legend{display:flex;justify-content:center;gap:20px;margin-top:16px;flex-wrap:wrap;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:#94a3b8;}
+  .legend-line{width:24px;height:2px;border-radius:1px;}
+  .legend-line.emerald{background:#34d399;}
+  .legend-line.orange{background:#fb923c;}
+  .legend-line.violet{background:#a78bfa;}
+  .legend-line.dashed{background:transparent;border-top:2px dashed #fbbf24;}
+  .legend-line.callback{background:transparent;border-top:2px dashed #fbbf24;}
+
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:20px;}
+  .card{background:#1e293b;border-radius:10px;padding:14px 16px;border:1px solid #334155;}
+  .card-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+  .card-dot{width:8px;height:8px;border-radius:50%;}
+  .card-dot.emerald{background:#34d399;}
+  .card-dot.violet{background:#a78bfa;}
+  .card h3{font-size:13px;font-weight:600;color:#e2e8f0;}
+  .card ul{margin:0;padding-left:14px;}
+  .card li{font-size:11px;color:#94a3b8;line-height:1.7;}
+
+  .footer{text-align:center;margin-top:18px;font-size:10px;color:#475569;}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1><span class="dot"></span>Watchdog V3 — 核心扫描周期时序图</h1>
+    <p>一次完整扫描周期：从Excel打开到飞书通知的全链路交互时序</p>
+  </div>
+
+  <svg viewBox="0 0 1200 1130" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M40 0L0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+      </pattern>
+      <marker id="arrow-emerald" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#34d399"/>
+      </marker>
+      <marker id="arrow-violet" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#a78bfa"/>
+      </marker>
+      <marker id="arrow-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#fb923c"/>
+      </marker>
+      <marker id="arrow-amber" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#fbbf24"/>
+      </marker>
+      <marker id="arrow-sky" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#38bdf8"/>
+      </marker>
+      <marker id="arrow-rose" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#fb7185"/>
+      </marker>
+    </defs>
+    <rect width="1200" height="1130" fill="url(#grid)"/>
+
+    <!-- ==================== 角色标题 ==================== -->
+    <g font-size="11" font-weight="700" text-anchor="middle" fill="#e2e8f0">
+      <text x="80" y="40" fill="#34d399">⏱ Scheduler</text>
+      <text x="200" y="40" fill="#94a3b8">📁 Excel</text>
+      <text x="340" y="40" fill="#34d399">⚙️ Scanner</text>
+      <text x="470" y="40" fill="#fbbf24">📐 Spec</text>
+      <text x="600" y="40" fill="#a78bfa">💾 DB</text>
+      <text x="730" y="40" fill="#fb7185">🔍 Alarm</text>
+      <text x="860" y="40" fill="#fb923c">📬 Notifier</text>
+      <text x="990" y="40" fill="#38bdf8">📋 Logger</text>
+      <text x="1100" y="40" fill="#64748b">🌐 Feishu</text>
+    </g>
+
+    <!-- ==================== 生命线 ==================== -->
+    <g stroke="#334155" stroke-width="1" stroke-dasharray="4,4">
+      <line x1="80" y1="55" x2="80" y2="1100"/>
+      <line x1="200" y1="55" x2="200" y2="1100"/>
+      <line x1="340" y1="55" x2="340" y2="1100"/>
+      <line x1="470" y1="55" x2="470" y2="1100"/>
+      <line x1="600" y1="55" x2="600" y2="1100"/>
+      <line x1="730" y1="55" x2="730" y2="1100"/>
+      <line x1="860" y1="55" x2="860" y2="1100"/>
+      <line x1="990" y1="55" x2="990" y2="1100"/>
+      <line x1="1100" y1="55" x2="1100" y2="1100"/>
+    </g>
+
+    <!-- ==================== 序号列 ==================== -->
+    <text x="15" y="78" fill="#475569" font-size="9">1</text>
+    <text x="15" y="108" fill="#475569" font-size="9">2</text>
+    <text x="15" y="145" fill="#475569" font-size="9">3</text>
+    <text x="15" y="175" fill="#475569" font-size="9">4</text>
+    <text x="15" y="210" fill="#475569" font-size="9">5</text>
+    <text x="15" y="248" fill="#475569" font-size="9">6</text>
+    <text x="15" y="278" fill="#475569" font-size="9">7</text>
+    <text x="15" y="315" fill="#475569" font-size="9">8</text>
+    <text x="15" y="352" fill="#475569" font-size="9">9</text>
+    <text x="15" y="390" fill="#475569" font-size="9">10</text>
+    <text x="15" y="425" fill="#475569" font-size="9">11</text>
+    <text x="15" y="455" fill="#475569" font-size="9">12</text>
+    <text x="15" y="490" fill="#475569" font-size="9">13</text>
+    <text x="15" y="530" fill="#475569" font-size="9">14</text>
+    <text x="15" y="565" fill="#475569" font-size="9">15</text>
+    <text x="15" y="610" fill="#475569" font-size="9">16</text>
+    <text x="15" y="660" fill="#475569" font-size="9">17</text>
+    <text x="15" y="705" fill="#475569" font-size="9">18</text>
+    <text x="15" y="740" fill="#475569" font-size="9">19</text>
+    <text x="15" y="780" fill="#475569" font-size="9">20</text>
+    <text x="15" y="820" fill="#475569" font-size="9">21</text>
+    <text x="15" y="860" fill="#475569" font-size="9">22</text>
+    <text x="15" y="895" fill="#475569" font-size="9">23</text>
+    <text x="15" y="930" fill="#475569" font-size="9">24</text>
+    <text x="15" y="965" fill="#475569" font-size="9">25</text>
+    <text x="15" y="1000" fill="#475569" font-size="9">26</text>
+    <text x="15" y="1040" fill="#475569" font-size="9">27</text>
+
+    <!-- ==================== 阶段标签 ==================== -->
+    <rect x="25" y="115" width="110" height="20" rx="4" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.8"/>
+    <text x="80" y="129" fill="#34d399" font-size="9" text-anchor="middle">加载缓存</text>
+
+    <rect x="25" y="215" width="110" height="20" rx="4" fill="rgba(251,191,36,0.15)" stroke="#fbbf24" stroke-width="0.8"/>
+    <text x="80" y="229" fill="#fbbf24" font-size="9" text-anchor="middle">规格提取</text>
+
+    <rect x="25" y="360" width="110" height="20" rx="4" fill="rgba(59,130,246,0.15)" stroke="#3b82f6" stroke-width="0.8"/>
+    <text x="80" y="374" fill="#3b82f6" font-size="9" text-anchor="middle">数据扫描</text>
+
+    <rect x="25" y="600" width="110" height="20" rx="4" fill="rgba(168,85,247,0.15)" stroke="#a78bfa" stroke-width="0.8"/>
+    <text x="80" y="614" fill="#a78bfa" font-size="9" text-anchor="middle">增量同步</text>
+
+    <rect x="25" y="750" width="110" height="20" rx="4" fill="rgba(251,115,133,0.15)" stroke="#fb7185" stroke-width="0.8"/>
+    <text x="80" y="764" fill="#fb7185" font-size="9" text-anchor="middle">超限判定</text>
+
+    <rect x="25" y="895" width="110" height="20" rx="4" fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="0.8"/>
+    <text x="80" y="909" fill="#fb923c" font-size="9" text-anchor="middle">通知输出</text>
+
+    <!-- ======== 1. 轮询等待 ======== -->
+    <rect x="65" y="70" width="30" height="30" rx="4" fill="rgba(52,211,153,0.3)" stroke="#34d399" stroke-width="1"/>
+    <text x="80" y="66" fill="#64748b" font-size="8" text-anchor="middle" dominant-baseline="auto">loop</text>
+    <text x="80" y="90" fill="#6ee7b7" font-size="8" text-anchor="middle">wait</text>
+    <path d="M80 100 L80 120" stroke="#34d399" stroke-width="1" fill="none" marker-end="url(#arrow-emerald)"/>
+    <text x="60" y="115" fill="#34d399" font-size="8" text-anchor="end">排期到</text>
+
+    <!-- ======== 2. scan_all() ======== -->
+    <rect x="60" y="125" width="40" height="18" rx="3" fill="rgba(52,211,153,0.2)" stroke="#34d399" stroke-width="0.8"/>
+    <text x="80" y="137" fill="#34d399" font-size="8" text-anchor="middle">call</text>
+    <path d="M80 143 L200 143 M200 143 L340 143" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)" stroke-dasharray="3,2"/>
+
+    <!-- Scanner 激活 -->
+    <rect x="327" y="143" width="26" height="750" rx="3" fill="rgba(52,211,153,0.12)"/>
+
+    <text x="345" y="153" fill="#6ee7b7" font-size="8">scan_all()</text>
+
+    <!-- ======== 3. 检查mtime ======== -->
+    <path d="M340 175 L340 195" stroke="#34d399" stroke-width="1" fill="none"/>
+    <rect x="325" y="195" width="30" height="18" rx="3" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.6"/>
+    <text x="340" y="207" fill="#6ee7b7" font-size="8" text-anchor="middle">mtime</text>
+    <text x="355" y="207" fill="#64748b" font-size="8">检查文件修改时间 vs 上次记录</text>
+
+    <!-- ======== 4. open_excel ======== -->
+    <path d="M340 222 L200 222" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)"/>
+    <text x="270" y="215" fill="#94a3b8" font-size="9" text-anchor="middle">open_excel(path, pwd)</text>
+
+    <rect x="187" y="230" width="26" height="18" rx="3" fill="rgba(148,163,184,0.15)" stroke="#94a3b8" stroke-width="0.6"/>
+    <text x="200" y="242" fill="#94a3b8" font-size="8" text-anchor="middle">解密</text>
+
+    <path d="M200 255 L340 255" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)"/>
+    <text x="270" y="252" fill="#6ee7b7" font-size="8" text-anchor="middle">Workbook</text>
+
+    <!-- ======== 5. 过滤工作表 ======== -->
+    <rect x="325" y="270" width="30" height="18" rx="3" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.6"/>
+    <text x="340" y="282" fill="#6ee7b7" font-size="8" text-anchor="middle">过滤</text>
+    <text x="355" y="282" fill="#64748b" font-size="8">白名单快速过滤（跳过不匹配工作表）</text>
+
+    <!-- ======== 6. 加载hash缓存 ======== -->
+    <path d="M340 300 L600 300" stroke="#a78bfa" stroke-width="1.5" fill="none" marker-end="url(#arrow-violet)"/>
+    <text x="420" y="293" fill="#a78bfa" font-size="9">get_all_existing_hashes()</text>
+
+    <rect x="587" y="305" width="26" height="18" rx="3" fill="rgba(168,85,247,0.15)" stroke="#a78bfa" stroke-width="0.6"/>
+    <text x="600" y="317" fill="#c4b5fd" font-size="8" text-anchor="middle">DB</text>
+
+    <path d="M600 325 L340 325" stroke="#a78bfa" stroke-width="1.5" fill="none" marker-end="url(#arrow-violet)"/>
+    <text x="470" y="320" fill="#6ee7b7" font-size="8" text-anchor="middle">{自然键: MD5hash} 字典</text>
+
+    <!-- ======== 7. 加载规格缓存 ======== -->
+    <path d="M340 340 L600 340" stroke="#a78bfa" stroke-width="1.5" fill="none" marker-end="url(#arrow-violet)"/>
+    <text x="420" y="335" fill="#a78bfa" font-size="9">get_specs_dict()</text>
+
+    <rect x="587" y="348" width="26" height="18" rx="3" fill="rgba(168,85,247,0.15)" stroke="#a78bfa" stroke-width="0.6"/>
+    <text x="600" y="360" fill="#c4b5fd" font-size="8" text-anchor="middle">DB</text>
+
+    <path d="M600 368 L340 368" stroke="#a78bfa" stroke-width="1.5" fill="none" marker-end="url(#arrow-violet)"/>
+    <text x="470" y="363" fill="#6ee7b7" font-size="8" text-anchor="middle">规格字典缓存（供scan_sheet复用）</text>
+
+    <!-- ======== 8-12. 并行扫描工作表 ======== -->
+    <path d="M340 395 L340 420" stroke="#34d399" stroke-width="1" fill="none"/>
+    <rect x="105" y="420" width="470" height="22" rx="5" fill="rgba(59,130,246,0.1)" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,2"/>
+    <text x="340" y="436" fill="#38bdf8" font-size="10" text-anchor="middle">ThreadPoolExecutor 并行扫描 N 个工作表</text>
+    <!-- 每个工作表流程（简化表示） -->
+    <line x1="200" y1="458" x2="860" y2="458" stroke="#334155" stroke-width="0.5" stroke-dasharray="2,2"/>
+
+    <!-- 遍历工作表循环 -->
+    <rect x="130" y="460" width="420" height="18" rx="4" fill="rgba(59,130,246,0.1)" stroke="#38bdf8" stroke-width="0.8"/>
+    <text x="340" y="473" fill="#38bdf8" font-size="9" text-anchor="middle">for each sheet in sheets_to_scan (并行)</text>
+
+    <!-- ======== 9. 提取标准行 ======== -->
+    <path d="M340 485 L470 485" stroke="#fbbf24" stroke-width="1.5" fill="none" marker-end="url(#arrow-amber)"/>
+    <text x="405" y="480" fill="#fbbf24" font-size="9" text-anchor="middle">提取标准行(R2~R6)规格</text>
+
+    <rect x="457" y="490" width="26" height="18" rx="3" fill="rgba(251,191,36,0.15)" stroke="#fbbf24" stroke-width="0.6"/>
+    <text x="470" y="502" fill="#fbbf24" font-size="8" text-anchor="middle">解析</text>
+    <text x="485" y="502" fill="#64748b" font-size="8">≤10g/L → USL=10 · ≥80 → LSL=80 · (参考)→monitor</text>
+
+    <!-- upsert_spec -->
+    <path d="M470 515 L600 515" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#arrow-violet)"/>
+    <text x="535" y="512" fill="#a78bfa" font-size="8" text-anchor="middle">upsert_spec()</text>
+
+    <!-- ======== 10. 扫描数据行 ======== -->
+    <path d="M470 530 L340 530" stroke="#fbbf24" stroke-width="1.5" fill="none"/>
+    <text x="405" y="527" fill="#6ee7b7" font-size="8" text-anchor="middle">规格 → 存入 specs_cache</text>
+
+    <rect x="325" y="540" width="30" height="18" rx="3" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.6"/>
+    <text x="340" y="552" fill="#6ee7b7" font-size="8" text-anchor="middle">扫描</text>
+    <text x="355" y="552" fill="#64748b" font-size="8">逐行读取数据行（跳过连续100空行）</text>
+
+    <!-- for each data row -->
+    <rect x="115" y="565" width="450" height="18" rx="4" fill="rgba(168,85,247,0.08)" stroke="#a78bfa" stroke-width="0.8"/>
+    <text x="340" y="578" fill="#c4b5fd" font-size="9" text-anchor="middle">for each data_row (增量同步模式)</text>
+
+    <!-- ======== 11. MD5指纹 ======== -->
+    <rect x="325" y="590" width="30" height="18" rx="3" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.6"/>
+    <text x="340" y="602" fill="#6ee7b7" font-size="8" text-anchor="middle">MD5</text>
+    <text x="355" y="602" fill="#64748b" font-size="8">计算行指纹 hash = md5(样品名+日期+项目+值)</text>
+
+    <!-- ======== 12. 自然键查找 ======== -->
+    <rect x="325" y="620" width="30" height="50" rx="3" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.6"/>
+    <text x="340" y="632" fill="#6ee7b7" font-size="8" text-anchor="middle">比对</text>
+    <text x="355" y="625" fill="#64748b" font-size="8">natural_key = (sample_name, test_date)</text>
+    <text x="355" y="640" fill="#64748b" font-size="8">在 existing_hashes 中查找</text>
+    <text x="355" y="655" fill="#64748b" font-size="8">有日期列? → 自然键匹配</text>
+
+    <!-- ======== 13-15. 条件分支 ======== -->
+    <!-- alt 框 -->
+    <rect x="115" y="670" width="560" height="65" rx="6" fill="rgba(251,191,36,0.06)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,2"/>
+    <text x="125" y="684" fill="#fbbf24" font-size="8" font-weight="600">alt [hash 匹配判定]</text>
+
+    <!-- alt: hash相同 -->
+    <rect x="130" y="690" width="250" height="20" rx="3" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="0.6"/>
+    <text x="255" y="704" fill="#6ee7b7" font-size="8" text-anchor="middle">hash 相同 → 跳过（去重）</text>
+
+    <!-- alt: hash不同 -->
+    <rect x="390" y="690" width="270" height="20" rx="3" fill="rgba(251,115,133,0.1)" stroke="#fb7185" stroke-width="0.6"/>
+    <text x="525" y="704" fill="#fb7185" font-size="8" text-anchor="middle">hash 不同 → UPDATE（自然键定位）</text>
+
+    <!-- alt: 新行 -->
+    <rect x="130" y="714" width="530" height="18" rx="3" fill="rgba(99,102,241,0.1)" stroke="#6366f1" stroke-width="0.6"/>
+    <text x="395" y="726" fill="#818cf8" font-size="8" text-anchor="middle">无此自然键 → INSERT（ADD，新数据）</text>
+
+    <!-- === batch 写入 === -->
+    <path d="M340 742 L600 742" stroke="#a78bfa" stroke-width="1.5" fill="none" marker-end="url(#arrow-violet)"/>
+    <text x="420" y="737" fill="#a78bfa" font-size="9">insert_samples_batch(rows) — 每500行flush</text>
+
+    <!-- ======== 16. 超限检查 ======== -->
+    <rect x="300" y="758" width="80" height="18" rx="3" fill="rgba(251,115,133,0.15)" stroke="#fb7185" stroke-width="0.6"/>
+    <text x="340" y="770" fill="#fb7185" font-size="8" text-anchor="middle">超限检查</text>
+    <text x="385" y="770" fill="#64748b" font-size="8">→ check_row_against_specs()</text>
+
+    <!-- 获取规格（含覆盖） -->
+    <path d="M340 785 L730 785" stroke="#fb7185" stroke-width="1.5" fill="none" marker-end="url(#arrow-rose)"/>
+    <text x="535" y="780" fill="#fb7185" font-size="8" text-anchor="middle">match_sample_to_spec() + apply_spec_overrides()</text>
+
+    <rect x="717" y="790" width="26" height="18" rx="3" fill="rgba(251,115,133,0.15)" stroke="#fb7185" stroke-width="0.6"/>
+    <text x="730" y="802" fill="#fb7185" font-size="8" text-anchor="middle">比对</text>
+    <text x="745" y="802" fill="#64748b" font-size="8">值 vs 规格（含alarm/monitor模式）</text>
+
+    <!-- 返回结果 -->
+    <path d="M730 815 L340 815" stroke="#fb7185" stroke-width="1.5" fill="none" marker-end="url(#arrow-rose)"/>
+    <text x="535" y="810" fill="#6ee7b7" font-size="8" text-anchor="middle">[超限项列表] 或 []</text>
+
+    <!-- ======== 17. 报警入库 ======== -->
+    <rect x="325" y="830" width="30" height="18" rx="3" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.6"/>
+    <text x="340" y="842" fill="#6ee7b7" font-size="8" text-anchor="middle">入库</text>
+    <text x="355" y="842" fill="#64748b" font-size="8">有超限 → 收集到 alarm 列表</text>
+
+    <path d="M340 855 L600 855" stroke="#a78bfa" stroke-width="1.5" fill="none" marker-end="url(#arrow-violet)"/>
+    <text x="420" y="850" fill="#a78bfa" font-size="9">insert_alarms_batch(alarms) — 批次写入</text>
+
+    <!-- DB 激活 -->
+    <rect x="587" y="860" width="26" height="18" rx="3" fill="rgba(168,85,247,0.15)" stroke="#a78bfa" stroke-width="0.6"/>
+    <text x="600" y="872" fill="#c4b5fd" font-size="8" text-anchor="middle">DB</text>
+
+    <!-- ======== 18. 汇总报警 ======== -->
+    <path d="M340 885 L340 905" stroke="#34d399" stroke-width="1" fill="none"/>
+    <rect x="325" y="905" width="30" height="18" rx="3" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.6"/>
+    <text x="340" y="917" fill="#6ee7b7" font-size="8" text-anchor="middle">汇总</text>
+    <text x="355" y="917" fill="#64748b" font-size="8">所有sheet报警汇总 → 去重 → 按 mode 过滤（只alarm）</text>
+
+    <!-- ======== 19. 聚合 + 发送 ======== -->
+    <path d="M340 935 L860 935" stroke="#fb923c" stroke-width="1.5" fill="none" marker-end="url(#arrow-orange)"/>
+    <text x="535" y="930" fill="#fb923c" font-size="9">send_feishu(alarms) — 按样品+检测项双层聚合</text>
+
+    <rect x="847" y="940" width="26" height="18" rx="3" fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="0.6"/>
+    <text x="860" y="952" fill="#fb923c" font-size="8" text-anchor="middle">聚合</text>
+    <text x="875" y="952" fill="#64748b" font-size="8">分组 → 偏差排序 → 构建JSON</text>
+
+    <!-- 发送飞书 -->
+    <path d="M860 965 L1100 965" stroke="#38bdf8" stroke-width="1.5" fill="none" marker-end="url(#arrow-sky)"/>
+    <text x="980" y="958" fill="#38bdf8" font-size="9" text-anchor="middle">POST webhook（卡片消息）</text>
+
+    <rect x="1087" y="970" width="26" height="18" rx="3" fill="rgba(56,189,248,0.15)" stroke="#38bdf8" stroke-width="0.6"/>
+    <text x="1100" y="982" fill="#38bdf8" font-size="8" text-anchor="middle">🐦</text>
+
+    <!-- ======== 20. CSV备份 ======== -->
+    <path d="M860 1000 L990 1000" stroke="#38bdf8" stroke-width="1.2" fill="none" marker-end="url(#arrow-sky)"/>
+    <text x="925" y="995" fill="#38bdf8" font-size="9">write_alarm_log(alarms)</text>
+
+    <rect x="977" y="1005" width="26" height="18" rx="3" fill="rgba(56,189,248,0.15)" stroke="#38bdf8" stroke-width="0.6"/>
+    <text x="990" y="1017" fill="#38bdf8" font-size="8" text-anchor="middle">CSV</text>
+
+    <!-- ======== 21. 日志 ======== -->
+    <path d="M340 1035 L860 1035" stroke="#34d399" stroke-width="1" fill="none" stroke-dasharray="3,2"/>
+    <text x="600" y="1030" fill="#64748b" font-size="8" text-anchor="middle">log_sync() → 写入 sync_log 表 + watchdog.log</text>
+
+    <!-- ======== 22. 返回 ======== -->
+    <path d="M340 1055 L80 1055" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)" stroke-dasharray="3,2"/>
+    <text x="210" y="1050" fill="#6ee7b7" font-size="8" text-anchor="middle">返回报警列表（用于下一轮进度记录）</text>
+
+    <!-- ======== 23. 回到等待 ======== -->
+    <rect x="65" y="1070" width="30" height="18" rx="4" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="0.8"/>
+    <text x="80" y="1082" fill="#6ee7b7" font-size="8" text-anchor="middle">wait</text>
+    <path d="M80 1088 L80 1100" stroke="#34d399" stroke-width="1" fill="none" marker-end="url(#arrow-emerald)"/>
+    <text x="60" y="1095" fill="#34d399" font-size="8" text-anchor="end">回到等待</text>
+  </svg>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-line emerald"></div> 调用/返回</div>
+    <div class="legend-item"><div class="legend-line violet"></div> 数据库操作</div>
+    <div class="legend-item"><div class="legend-line orange"></div> 通知聚合</div>
+    <div class="legend-item"><div class="legend-line" style="background:transparent;border-top:2px dashed #fbbf24"></div> 条件分支</div>
+    <div class="legend-item"><div class="legend-line" style="background:transparent;border-top:1px dashed #38bdf8"></div> 外部发送</div>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-header"><div class="card-dot emerald"></div><h3>6大阶段</h3></div>
+      <ul>
+        <li>• <b>加载缓存</b>（1‑7）：检查mtime→打开Excel→加载hash+规格到内存</li>
+        <li>• <b>规格提取</b>（8‑9）：解析标准行→自动识别USL/LSL→(参考)→monitor</li>
+        <li>• <b>数据扫描</b>（10‑12）：逐行读Excel→MD5指纹→匹配白名单</li>
+        <li>• <b>增量同步</b>（13‑15）：自然键比对→hash未变跳过/变了UPDATE/新行INSERT</li>
+        <li>• <b>超限判定</b>（16‑17）：值 vs 规格→含spec_overrides→批次写入alarm_log</li>
+        <li>• <b>通知输出</b>（18‑21）：聚合→飞书卡片→CSV备份→日志</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-dot violet"></div><h3>增量同步关键设计</h3></div>
+      <ul>
+        <li>• 自然键 = (sample_name, test_date) — 唯一标识一行数据</li>
+        <li>• existing_hashes 预加载为 dict{nk: hash} — 避免逐行DB查询</li>
+        <li>• hash 相同 → 跳过（无变化）</li>
+        <li>• hash 不同 → UPDATE（数据被修改）</li>
+        <li>• 无此自然键 → INSERT（新增数据）</li>
+        <li>• ⚠️ 未主动删除（安全设计：保留历史数据）</li>
+        <li>• ⚠️ 无日期列 → 降级为 INSERT-only（防误覆盖）</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">Watchdog V3.0 · 寒锐钴业 · 单次扫描周期全链路时序</div>
+</div>
+</body>
+</html>

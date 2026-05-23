@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watchdog V3 — 系统架构图</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020617;
+    color: #e2e8f0;
+    font-family: 'Noto Sans SC', 'JetBrains Mono', sans-serif;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; padding: 20px;
+  }
+  .container {
+    max-width: 1200px; width: 100%;
+    background: #0f172a; border-radius: 16px; border: 1px solid #1e293b;
+    padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .header { text-align: center; margin-bottom: 24px; }
+  .header h1 { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+  .header p { font-size: 13px; color: #64748b; margin-top: 4px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; animation: pulse 2s infinite; vertical-align: middle; }
+  .dot.emerald { background: #34d399; box-shadow: 0 0 8px #34d39966; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  svg { width: 100%; height: auto; display: block; }
+  svg text { font-family: 'Noto Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', sans-serif !important; }
+
+  .legend { display: flex; justify-content: center; gap: 24px; margin-top: 20px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #94a3b8; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+  .card { background: #1e293b; border-radius: 10px; padding: 16px; border: 1px solid #334155; }
+  .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .card-dot.emerald { background: #34d399; }
+  .card-dot.violet { background: #a78bfa; }
+  .card-dot.amber { background: #fbbf24; }
+  .card h3 { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+  .card ul { margin: 0; padding-left: 14px; }
+  .card li { font-size: 11px; color: #94a3b8; line-height: 1.7; }
+
+  .footer { text-align: center; margin-top: 20px; font-size: 10px; color: #475569; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1><span class="dot emerald"></span>Watchdog V3 — 中控检测数据实时监控报警器</h1>
+    <p>三级风险管控 · 可插拔数据库后端 · 飞书通知 · Excel自动同步</p>
+  </div>
+
+  <svg viewBox="0 0 1100 780" xmlns="http://www.w3.org/2000/svg">
+    <!-- 背景网格 -->
+    <defs>
+      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M40 0L0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+      </pattern>
+      <marker id="arrow-amber" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#fbbf24"/>
+      </marker>
+      <marker id="arrow-emerald" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#34d399"/>
+      </marker>
+      <marker id="arrow-violet" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#a78bfa"/>
+      </marker>
+      <marker id="arrow-slate" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#94a3b8"/>
+      </marker>
+      <marker id="arrow-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,3 L0,6" fill="#fb923c"/>
+      </marker>
+    </defs>
+    <rect width="1100" height="780" fill="url(#grid)"/>
+
+    <!-- ==================== 层标签 ==================== -->
+    <text x="50" y="45" fill="#64748b" font-size="11" font-weight="600">配置层</text>
+    <text x="50" y="155" fill="#64748b" font-size="11" font-weight="600">数据源</text>
+    <text x="50" y="405" fill="#64748b" font-size="11" font-weight="600">输出层</text>
+
+    <!-- ==================== 1. 配置层 ==================== -->
+    <!-- config.json 边界框 -->
+    <rect x="50" y="55" width="1000" height="75" rx="10" fill="rgba(120,53,15,0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+    <text x="65" y="75" fill="#fbbf24" font-size="11" font-weight="600">config.json</text>
+
+    <!-- 5 个配置块 -->
+    <rect x="65" y="85" width="175" height="32" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="0.8"/>
+    <text x="152" y="105" fill="#fbbf24" font-size="10" text-anchor="middle">excel（路径/密码/表）</text>
+
+    <rect x="250" y="85" width="150" height="32" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="0.8"/>
+    <text x="325" y="105" fill="#fbbf24" font-size="10" text-anchor="middle">filter（白名单）</text>
+
+    <rect x="410" y="85" width="170" height="32" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="0.8"/>
+    <text x="495" y="105" fill="#fbbf24" font-size="10" text-anchor="middle">alarm_mode / spec_overrides</text>
+
+    <rect x="590" y="85" width="150" height="32" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="0.8"/>
+    <text x="665" y="105" fill="#fbbf24" font-size="10" text-anchor="middle">feishu（Webhook）</text>
+
+    <rect x="750" y="85" width="150" height="32" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="0.8"/>
+    <text x="825" y="105" fill="#fbbf24" font-size="10" text-anchor="middle">watch（轮询间隔）</text>
+
+    <rect x="910" y="85" width="125" height="32" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="0.8"/>
+    <text x="972" y="105" fill="#fbbf24" font-size="10" text-anchor="middle">database（后端类型）</text>
+
+    <!-- config → Excel 箭头 -->
+    <path d="M195 130 L195 145 L195 160" stroke="#fbbf24" stroke-width="1.5" fill="none" marker-end="url(#arrow-amber)" stroke-dasharray="4,3"/>
+
+    <!-- ==================== 2. 数据源 — Excel ==================== -->
+    <rect x="65" y="170" width="260" height="210" rx="10" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="80" y="192" fill="#94a3b8" font-size="12" font-weight="600">📊 Excel 数据源</text>
+    <text x="80" y="208" fill="#64748b" font-size="9">中控样品检测结果.xlsx（含密码保护）</text>
+
+    <rect x="80" y="218" width="230" height="68" rx="4" fill="rgba(30,41,59,0.6)" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3,2"/>
+    <text x="195" y="237" fill="#94a3b8" font-size="10" text-anchor="middle">标准行（R2~R6）</text>
+    <text x="195" y="252" fill="#64748b" font-size="9" text-anchor="middle">≤10g/L | ≥80 | 80~110 | 0.005~0.015(参考)</text>
+    <text x="195" y="267" fill="#64748b" font-size="9" text-anchor="middle">→ 自动提取规格（正则匹配）</text>
+
+    <rect x="80" y="296" width="230" height="70" rx="4" fill="rgba(30,41,59,0.6)" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3,2"/>
+    <text x="195" y="315" fill="#94a3b8" font-size="10" text-anchor="middle">数据行（R7+）</text>
+    <text x="195" y="330" fill="#64748b" font-size="9" text-anchor="middle">日期 | 时间 | ... | 样品名称 | 检测值1 | ...</text>
+    <text x="195" y="348" fill="#64748b" font-size="9" text-anchor="middle">全厂17车间 · 5万+行 · 仅白名单样品处理</text>
+
+    <!-- Excel → Scanner 箭头 -->
+    <path d="M325 280 L355 280" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrow-slate)"/>
+
+    <!-- ==================== 3. 核心处理层 ==================== -->
+    <rect x="365" y="55" width="685" height="320" rx="10" fill="rgba(6,78,59,0.15)" stroke="#34d399" stroke-width="1" stroke-dasharray="6,3"/>
+    <text x="378" y="75" fill="#34d399" font-size="11" font-weight="600">Watchdog 核心处理（watchdog.py）</text>
+
+    <!-- ① Scheduler -->
+    <rect x="385" y="88" width="200" height="55" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="485" y="108" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">① Scheduler</text>
+    <text x="485" y="125" fill="#6ee7b7" font-size="9" text-anchor="middle">--daemon / --once / --init-db</text>
+    <text x="485" y="137" fill="#64748b" font-size="8" text-anchor="middle">轮询间隔 60s · 进度跟踪（.watchdog_progress.json）</text>
+
+    <!-- ② Scanner -->
+    <rect x="615" y="88" width="200" height="55" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="715" y="108" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">② Scanner</text>
+    <text x="715" y="125" fill="#6ee7b7" font-size="9" text-anchor="middle">open_excel → 遍历工作表</text>
+    <text x="715" y="137" fill="#64748b" font-size="8" text-anchor="middle">白名单过滤 · 多线程并行扫描</text>
+
+    <!-- Scheduler → Scanner -->
+    <path d="M585 115 L610 115" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)"/>
+
+    <!-- ③ Spec Extractor -->
+    <rect x="385" y="168" width="200" height="55" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="485" y="188" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">③ Spec Extractor</text>
+    <text x="485" y="205" fill="#6ee7b7" font-size="9" text-anchor="middle">解析标准行 → 提取规格（USL/LSL）</text>
+    <text x="485" y="218" fill="#64748b" font-size="8" text-anchor="middle">(参考) → monitor 模式 · 跳过非量化字段</text>
+
+    <!-- Scanner → Spec Extractor -->
+    <path d="M615 170 L615 160 L585 160 L585 168" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)"/>
+
+    <!-- ④ Data Scanner -->
+    <rect x="615" y="168" width="200" height="55" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="715" y="188" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">④ Data Scanner</text>
+    <text x="715" y="205" fill="#6ee7b7" font-size="9" text-anchor="middle">逐行读取 → MD5 指纹去重</text>
+    <text x="715" y="218" fill="#64748b" font-size="8" text-anchor="middle">自然键（样品名+日期）→ UPDATE/INSERT</text>
+
+    <!-- Scanner → Data Scanner -->
+    <path d="M715 143 L715 165" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)"/>
+
+    <!-- ⑤ Alarm Checker -->
+    <rect x="385" y="248" width="200" height="55" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="485" y="268" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">⑤ Alarm Checker</text>
+    <text x="485" y="285" fill="#6ee7b7" font-size="9" text-anchor="middle">检测值 vs 规格 → 超限判定</text>
+    <text x="485" y="298" fill="#64748b" font-size="8" text-anchor="middle">spec_overrides 覆盖阈值 · alarm/monitor 模式</text>
+
+    <!-- Data Scanner → Alarm Checker -->
+    <path d="M615 220 L615 210 L585 210 L585 248" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)"/>
+
+    <!-- ⑥ Notifier -->
+    <rect x="615" y="248" width="200" height="55" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="715" y="268" fill="#34d399" font-size="11" font-weight="600" text-anchor="middle">⑥ Notifier</text>
+    <text x="715" y="285" fill="#6ee7b7" font-size="9" text-anchor="middle">按样品+检测项聚合 → 飞书卡片</text>
+    <text x="715" y="298" fill="#64748b" font-size="8" text-anchor="middle">超长自动分段 · 偏差排序 · CSV 备份</text>
+
+    <!-- Alarm Checker → Notifier -->
+    <path d="M585 275 L610 275" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#arrow-emerald)"/>
+
+    <!-- ==================== 4. 数据库后端层 ==================== -->
+    <rect x="830" y="170" width="210" height="190" rx="10" fill="rgba(76,29,149,0.15)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="6,3"/>
+    <text x="845" y="192" fill="#a78bfa" font-size="11" font-weight="600">Database 后端</text>
+
+    <rect x="845" y="200" width="180" height="32" rx="4" fill="rgba(76,29,149,0.3)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="935" y="220" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">DatabaseBackend（ABC）</text>
+
+    <rect x="845" y="242" width="180" height="28" rx="4" fill="rgba(76,29,149,0.3)" stroke="#a78bfa" stroke-width="0.8"/>
+    <text x="935" y="260" fill="#c4b5fd" font-size="10" text-anchor="middle">✅ SQLiteBackend（当前）</text>
+
+    <rect x="845" y="278" width="180" height="28" rx="4" fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="0.8" stroke-dasharray="3,2"/>
+    <text x="935" y="296" fill="#64748b" font-size="10" text-anchor="middle">⏳ MySQLBackend（预留）</text>
+
+    <rect x="845" y="314" width="180" height="28" rx="4" fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="0.8" stroke-dasharray="3,2"/>
+    <text x="935" y="332" fill="#64748b" font-size="10" text-anchor="middle">⏳ PostgreSQLBackend（预留）</text>
+
+    <!-- Data Scanner → DB 连接 -->
+    <path d="M815 195 L840 260" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#arrow-violet)" stroke-dasharray="4,2"/>
+
+    <!-- ==================== 5. 输出层 ==================== -->
+    <!-- SQLite -->
+    <rect x="65" y="420" width="240" height="140" rx="10" fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="80" y="442" fill="#a78bfa" font-size="12" font-weight="600">🗄️ SQLite 数据库</text>
+    <text x="80" y="460" fill="#64748b" font-size="9">检测数据库.sqlite</text>
+
+    <rect x="80" y="470" width="210" height="22" rx="3" fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="0.6"/>
+    <text x="185" y="485" fill="#c4b5fd" font-size="9" text-anchor="middle">samples（原始检测数据 + MD5指纹）</text>
+
+    <rect x="80" y="496" width="210" height="22" rx="3" fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="0.6"/>
+    <text x="185" y="511" fill="#c4b5fd" font-size="9" text-anchor="middle">alarm_log（报警记录 + 处置状态）</text>
+
+    <rect x="80" y="522" width="210" height="22" rx="3" fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="0.6"/>
+    <text x="185" y="537" fill="#c4b5fd" font-size="9" text-anchor="middle">qc_specs（规格自动/手动）</text>
+
+    <rect x="80" y="548" width="210" height="22" rx="3" fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="0.6"/>
+    <text x="185" y="563" fill="#c4b5fd" font-size="9" text-anchor="middle">sync_log（同步记录）</text>
+
+    <!-- 后端→DB 箭头 -->
+    <path d="M935 360 L935 380 L185 380 L185 418" stroke="#a78bfa" stroke-width="1.2" fill="none" marker-end="url(#arrow-violet)" stroke-dasharray="4,2"/>
+
+    <!-- Feishu -->
+    <rect x="430" y="420" width="250" height="140" rx="10" fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="1.5"/>
+    <text x="445" y="442" fill="#fb923c" font-size="12" font-weight="600">💬 飞书通知</text>
+    <text x="445" y="460" fill="#64748b" font-size="9">Feishu Webhook 机器人</text>
+
+    <rect x="445" y="470" width="220" height="22" rx="3" fill="rgba(251,146,60,0.2)" stroke="#fb923c" stroke-width="0.6"/>
+    <text x="555" y="485" fill="#fdba74" font-size="9" text-anchor="middle">按样品名 + 检测项双层聚合</text>
+
+    <rect x="445" y="496" width="220" height="22" rx="3" fill="rgba(251,146,60,0.2)" stroke="#fb923c" stroke-width="0.6"/>
+    <text x="555" y="511" fill="#fdba74" font-size="9" text-anchor="middle">偏差从高到低排序</text>
+
+    <rect x="445" y="522" width="220" height="22" rx="3" fill="rgba(251,146,60,0.2)" stroke="#fb923c" stroke-width="0.6"/>
+    <text x="555" y="537" fill="#fdba74" font-size="9" text-anchor="middle">超长内容自动分段</text>
+
+    <rect x="445" y="548" width="220" height="22" rx="3" fill="rgba(251,146,60,0.2)" stroke="#fb923c" stroke-width="0.6"/>
+    <text x="555" y="563" fill="#fdba74" font-size="9" text-anchor="middle">规格覆盖备注（报警≥X）</text>
+
+    <!-- Notifier → Feishu -->
+    <path d="M715 303 L715 390 L555 390 L555 418" stroke="#fb923c" stroke-width="1.5" fill="none" marker-end="url(#arrow-orange)"/>
+
+    <!-- CSV / Log -->
+    <rect x="795" y="420" width="250" height="140" rx="10" fill="rgba(8,51,68,0.3)" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="810" y="442" fill="#22d3ee" font-size="12" font-weight="600">📋 本地备份</text>
+    <text x="810" y="460" fill="#64748b" font-size="9">兼容层</text>
+
+    <rect x="810" y="470" width="220" height="22" rx="3" fill="rgba(8,51,68,0.2)" stroke="#22d3ee" stroke-width="0.6"/>
+    <text x="920" y="485" fill="#67e8f9" font-size="9" text-anchor="middle">alarm_history.csv（CSV备份）</text>
+
+    <rect x="810" y="496" width="220" height="22" rx="3" fill="rgba(8,51,68,0.2)" stroke="#22d3ee" stroke-width="0.6"/>
+    <text x="920" y="511" fill="#67e8f9" font-size="9" text-anchor="middle">watchdog.log（运行日志）</text>
+
+    <rect x="810" y="522" width="220" height="22" rx="3" fill="rgba(8,51,68,0.2)" stroke="#22d3ee" stroke-width="0.6"/>
+    <text x="920" y="537" fill="#67e8f9" font-size="9" text-anchor="middle">.watchdog_progress.json（进度）</text>
+
+    <!-- Notifier → CSV -->
+    <path d="M810 275 L830 275 L830 390 L920 390 L920 418" stroke="#22d3ee" stroke-width="1.2" fill="none" marker-end="url(#arrow-emerald)" stroke-dasharray="4,2"/>
+
+    <!-- ==================== 图例 ==================== -->
+  </svg>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(120,53,15,0.4);border-color:#fbbf24"></div> 配置层</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(30,41,59,0.5);border-color:#94a3b8"></div> 数据源</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(6,78,59,0.4);border-color:#34d399"></div> 核心处理</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(76,29,149,0.4);border-color:#a78bfa"></div> 数据库</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(251,146,60,0.3);border-color:#fb923c"></div> 通知</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:rgba(8,51,68,0.4);border-color:#22d3ee"></div> 备份/日志</div>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-header"><div class="card-dot emerald"></div><h3>数据流</h3></div>
+      <ul>
+        <li>• Excel → Scanner → Data Scanner → Alarm Checker → Notifier</li>
+        <li>• 自然键（样品+日期）UPDATE 取代纯 INSERT</li>
+        <li>• MD5 指纹去重 + 批次写入（500行/批）</li>
+        <li>• spec_overrides 覆盖阈值不修改原始Excel</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-dot violet"></div><h3>设计要点</h3></div>
+      <ul>
+        <li>• 可插拔数据库后端（ABC接口）</li>
+        <li>• 三级白名单过滤（工作表→标准行→数据行）</li>
+        <li>• (参考)标记自动降级为 monitor 模式</li>
+        <li>• 多线程并行扫描工作表</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-dot amber"></div><h3>性能指标</h3></div>
+      <ul>
+        <li>• 单表400行扫描 ≈ 0.02s</li>
+        <li>• 内存hash预加载（免逐行DB查询）</li>
+        <li>• 规格DB缓存（第二次起免解析标准行）</li>
+        <li>• 增量同步（仅新行/修改行写DB）</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">Watchdog V3.0 · 寒锐钴业 · 三级风险管控体系</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,68 @@
+{
+  "excel": {
+    "files": [
+      {
+        "path": "Z:\\共享盘\\检测数据\\中控检测日报.xlsx",
+        "password": "2026",
+        "sheets": [],
+        "exclude_sheets": ["检测项目表", "样品名称表", "Sheet3"]
+      },
+      {
+        "path": "Z:\\共享盘\\检测数据\\中控检测月报.xlsx",
+        "password": "2026",
+        "sheets": [],
+        "exclude_sheets": ["检测项目表", "样品名称表", "Sheet3"]
+      }
+    ],
+    "path": "Z:\\共享盘\\检测数据\\中控检测日报.xlsx",
+    "password": "2026",
+    "sheets": [],
+    "exclude_sheets": ["检测项目表", "样品名称表", "Sheet3"]
+  },
+  "database": {
+    "type": "sqlite",
+    "sqlite_path": "./检测数据库.sqlite"
+  },
+  "filter": {
+    "whitelist_enabled": true,
+    "whitelist_patterns": [
+      "一浸液[GHIJKL]槽",
+      "除铁铝液[IJK]槽",
+      "二浸液[EFGH]槽",
+      "二浸渣[EFGH]槽",
+      "^精滤液"
+    ]
+  },
+  "feishu": {
+    "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/79af6b32-1682-4a46-9e97-f13f9f35b62a",
+    "title": "🔴 检测超限报警",
+    "notify_monitor": false
+  },
+  "alarm_mode": {
+    "default_mode": "auto",
+    "overrides": {}
+  },
+  "spec_overrides": {
+    "精滤液/Al": {
+      "alarm_upper": 0.6
+    },
+    "精滤液C槽/Fe2+": {
+      "alarm_upper": 0.1
+    }
+  },
+  "watch": {
+    "interval_seconds": 60,
+    "progress_file": "./.watchdog_progress.json",
+    "retry": {
+      "max_attempts": 3,
+      "base_delay_seconds": 5,
+      "max_delay_seconds": 60
+    },
+    "health_check_interval": 10
+  },
+  "log": {
+    "max_file_size_mb": 50,
+    "backup_count": 3,
+    "level": "INFO"
+  }
+}
