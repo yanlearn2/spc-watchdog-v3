@@ -1549,7 +1549,7 @@ def main():
 
     # 正常模式（前台的持续监控或 --once）
     log.info("=" * 50)
-    log.info("🔍 中控检测数据监控报警器 V3.0")
+    log.info("🔍 中控检测数据监控报警器 V3.1")
     excel_count = len(get_excel_files())
     log.info(f"   Excel文件数: {excel_count}")
     for ef in get_excel_files()[:3]:
