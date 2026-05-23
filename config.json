@@ -2,29 +2,27 @@
   "excel": {
     "files": [
       {
-        "path": "Z:\\共享盘\\检测数据\\中控检测日报.xlsx",
-        "password": "2026",
+        "path": "./test.xlsx",
+        "password": null,
         "sheets": [],
-        "exclude_sheets": ["检测项目表", "样品名称表", "Sheet3"]
-      },
-      {
-        "path": "Z:\\共享盘\\检测数据\\中控检测月报.xlsx",
-        "password": "2026",
-        "sheets": [],
-        "exclude_sheets": ["检测项目表", "样品名称表", "Sheet3"]
+        "exclude_sheets": []
       }
     ],
     "path": "Z:\\共享盘\\检测数据\\中控检测日报.xlsx",
     "password": "2026",
     "sheets": [],
-    "exclude_sheets": ["检测项目表", "样品名称表", "Sheet3"]
+    "exclude_sheets": [
+      "检测项目表",
+      "样品名称表",
+      "Sheet3"
+    ]
   },
   "database": {
     "type": "sqlite",
     "sqlite_path": "./检测数据库.sqlite"
   },
   "filter": {
-    "whitelist_enabled": true,
+    "whitelist_enabled": false,
     "whitelist_patterns": [
       "一浸液[GHIJKL]槽",
       "除铁铝液[IJK]槽",

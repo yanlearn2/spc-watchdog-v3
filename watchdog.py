@@ -1166,7 +1166,7 @@ def send_feishu(alarms, excel_name="", alarm_only=True):
                 "elements": [
                     {"tag": "markdown", "content": elements_content},
                     {"tag": "note", "elements": [
-                        {"tag": "plain_text", "content": f"监控时间: {now_str} | {excel_path}"}
+                        {"tag": "plain_text", "content": f"监控时间: {now_str} | {excel_name}"}
                     ]}
                 ]
             }
