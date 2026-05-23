@@ -1,0 +1,24 @@
+[Unit]
+Description=寒锐钴业 SPC 过程质量监控 Watchdog V3
+Documentation=https://github.com/hanrui-watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/watchdog_v2/watchdog.py --daemon-child
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=on-failure
+RestartSec=10
+WorkingDirectory=/opt/watchdog_v2
+StandardOutput=append:/opt/watchdog_v2/watchdog.log
+StandardError=append:/opt/watchdog_v2/watchdog.log
+
+# 安全限制
+NoNewPrivileges=true
+ProtectHome=read-only
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

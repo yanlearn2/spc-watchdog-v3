@@ -1079,7 +1079,7 @@ def format_excel_date(val):
     return s[:8]
 
 
-def send_feishu(alarms, excel_path, alarm_only=True):
+def send_feishu(alarms, excel_name="", alarm_only=True):
     """发送飞书通知，按样品+检测项聚合展示（只发送 alarm 模式的）"""
     if alarm_only:
         alarms = [a for a in alarms if a.get("mode") == "alarm"]
@@ -1241,6 +1241,88 @@ def get_excel_files():
     }]
 
 
+# ─── 启动配置校验 ──────────────────────────────────────
+LOCK_FILE = SCRIPT_DIR / ".watchdog.lock"
+
+def check_lock():
+    """检查锁文件，防止多实例运行"""
+    if LOCK_FILE.exists():
+        try:
+            pid = int(LOCK_FILE.read_text().strip())
+            import errno
+            # 跨平台检查进程是否存活
+            try:
+                os.kill(pid, 0)  # 信号0=仅检查存在性
+                log.error(f"❌ 另一个实例已在运行 (PID={pid})，锁文件: {LOCK_FILE}")
+                log.error("   如果确定没有其他实例在运行，请删除锁文件后重试")
+                sys.exit(1)
+            except OSError as e:
+                if e.errno == errno.ESRCH:
+                    log.warning(f"⚠ 锁文件存在但进程 (PID={pid}) 已不存在，覆盖锁文件")
+        except (ValueError, OSError):
+            log.warning(f"⚠ 锁文件格式异常，覆盖: {LOCK_FILE}")
+    LOCK_FILE.write_text(str(os.getpid()))
+    log.info(f"🔒 锁文件已创建 (PID={os.getpid()})")
+
+def release_lock():
+    """释放锁文件"""
+    if LOCK_FILE.exists():
+        try:
+            pid = int(LOCK_FILE.read_text().strip())
+            if pid == os.getpid():
+                LOCK_FILE.unlink()
+                log.debug("🔓 锁文件已释放")
+        except (ValueError, OSError):
+            pass
+
+def validate_config():
+    """启动时校验配置完整性"""
+    errors = []
+    
+    # 必须字段
+    if "excel" not in CONFIG:
+        errors.append("缺少 excel 配置段")
+    if "feishu" not in CONFIG:
+        errors.append("缺少 feishu 配置段")
+    if "database" not in CONFIG:
+        errors.append("缺少 database 配置段")
+    
+    # Excel文件校验
+    if not errors:
+        excel_files = get_excel_files()
+        if not excel_files:
+            errors.append("Excel文件列表为空")
+        else:
+            for i, f in enumerate(excel_files):
+                path = f.get("path", "")
+                if not path:
+                    errors.append(f"files[{i}]: path 为空")
+                    continue
+                if not os.path.exists(path):
+                    errors.append(f"文件不存在: {path}")
+    
+    # 白名单校验
+    whitelist = get_whitelist()
+    if whitelist:
+        for i, wp in enumerate(whitelist):
+            try:
+                re.compile(wp)
+            except re.error:
+                errors.append(f"白名单模式[{i}] '{wp}' 不是有效的正则表达式")
+    
+    # 飞书Webhook校验
+    webhook = CONFIG.get("feishu", {}).get("webhook_url", "")
+    if not webhook or webhook.endswith("你的WebHook地址"):
+        log.warning("⚠ 飞书Webhook未配置，报警将不会发送到飞书")
+    
+    if errors:
+        log.error("❌ 配置校验失败:")
+        for e in errors:
+            log.error(f"   - {e}")
+        sys.exit(1)
+    
+    log.info("✅ 配置校验通过")
+
 # ─── 扫描单个Excel文件 ────────────────────────────────
 def scan_one_file(file_cfg, existing_hashes, db_specs_dict, db):
     """扫描一个Excel文件中的所有匹配工作表，返回报警列表"""
@@ -1380,10 +1462,50 @@ def scan_all(db):
     if all_alarms:
         log.info("💾 数据库: samples=" + str(db.get_sample_count()) + ", alarm_log=" + str(db.get_alarm_count()))
     return all_alarms
+
+# ─── 报警去重 ──────────────────────────────────────────
+LAST_ALARM_VALUES = {}  # {(sample, item): (value, time)} 用于去重
+
+def dedup_alarms(alarms):
+    """过滤掉同一样品同一项目与上次扫描值不变的报警"""
+    if not alarms:
+        return []
+    deduped = []
+    for a in alarms:
+        key = (a.get("sample", ""), a.get("item", ""))
+        new_val = a.get("value")
+        old_val = LAST_ALARM_VALUES.get(key)
+        if old_val is None or abs(float(new_val) - float(old_val[0])) > 0.0001:
+            deduped.append(a)
+            LAST_ALARM_VALUES[key] = (new_val, time.time())
+    return deduped
+
 def main():
     once = "--once" in sys.argv
+    daemon_child = "--daemon-child" in sys.argv
     daemon = "--daemon" in sys.argv
     init_db_only = "--init-db" in sys.argv
+    skip_validation = "--skip-validation" in sys.argv
+
+    # 后台模式：先 fork 子进程，父进程立即退出
+    if daemon:
+        import subprocess
+        script = Path(__file__).resolve()
+        cmd = [sys.executable, str(script), "--daemon-child"]
+        log_path = SCRIPT_DIR / "watchdog_daemon.log"
+        flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        with open(log_path, "w") as lf:
+            proc = subprocess.Popen(cmd, stdout=lf, stderr=lf, creationflags=flags)
+        print(f"🔄 已后台启动 (PID: {proc.pid})")
+        print(f"📋 日志: {log_path}")
+        return
+
+    # 校验配置 + 锁文件
+    if not skip_validation:
+        validate_config()
+    check_lock()
+    import atexit
+    atexit.register(release_lock)
 
     # 创建数据库连接
     db_config = CONFIG.get("database", {"type": "sqlite", "sqlite_path": "./检测数据库.sqlite"})
@@ -1404,22 +1526,15 @@ def main():
         db.close()
         return
 
-    # 后台模式
-    if daemon:
-        import subprocess
-        script = Path(__file__).resolve()
-        cmd = [sys.executable, str(script)]
-        log_path = SCRIPT_DIR / "watchdog_daemon.log"
-        flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        with open(log_path, "w") as lf:
-            proc = subprocess.Popen(cmd, stdout=lf, stderr=lf, creationflags=flags)
-        print(f"🔄 已后台启动 (PID: {proc.pid})")
-        db.close()
-        return
-
+    # 正常模式（前台的持续监控或 --once）
     log.info("=" * 50)
     log.info("🔍 中控检测数据监控报警器 V3.0")
-    log.info(f"   Excel: {CONFIG['excel']['path']}")
+    excel_count = len(get_excel_files())
+    log.info(f"   Excel文件数: {excel_count}")
+    for ef in get_excel_files()[:3]:
+        log.info(f"     · {ef.get('path', '?')}")
+    if excel_count > 3:
+        log.info(f"     ... 共 {excel_count} 个文件")
     log.info(f"   数据库: {db_config.get('type', 'sqlite')}")
     if get_whitelist():
         log.info(f"   白名单: {len(get_whitelist())} 条模式 (已启用)")
@@ -1428,8 +1543,9 @@ def main():
     # 一次模式
     if once:
         alarms = scan_all(db)
+        alarms = dedup_alarms(alarms)
         if alarms:
-            send_feishu(alarms, CONFIG["excel"]["path"])
+            send_feishu(alarms, "单次扫描")
             write_alarm_log(alarms)
             monitor = [a for a in alarms if a.get("mode") == "monitor"]
             if monitor:
@@ -1450,6 +1566,7 @@ def main():
     while not STOP_FLAG:
         try:
             alarms = scan_all(db)
+            alarms = dedup_alarms(alarms)
             if alarms:
                 send_feishu(alarms, "多文件监控")
                 write_alarm_log(alarms)

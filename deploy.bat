@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-title 中控检测数据监控报警器 V3.0
+title 中控检测数据监控报警器 V3.1
 
 echo ================================================
-echo   中控检测数据监控报警器 V3.0
+echo   中控检测数据监控报警器 V3.1
 echo   部署脚本
 echo ================================================
 echo.
@@ -56,7 +56,15 @@ echo ✅ 部署验证完成！
 echo.
 echo 📋 下一步：
 echo   1. 编辑 config.json 配置 Excel 文件路径和白名单
-echo   2. 运行 run_watchdog.bat 启动监控
+echo   2. 运行 run_watchdog.bat 启动监控（前台循环）
 echo   3. 或运行 watchdog.py --daemon 后台运行
+echo   4. 或复制 watchdog.service 到 /etc/systemd/system/（Linux）
+echo.
+echo 🔧 V3.1 新特性:
+echo   · 启动配置校验（自动检查文件/白名单/Webhook）
+echo   · 锁文件机制（防止多实例冲突）
+echo   · 报警去重（同一异常不再重复通知）
+echo   · 自动重连（数据库异常自动恢复）
+echo   · 多文件并行扫描
 echo.
 pause
