@@ -632,19 +632,8 @@ def extract_specs_from_standard_rows(ws, sheet_name, whitelist_patterns=None):
     specs = {}
     for row_idx, sample_regex, row in standard_rows:
         # 白名单过滤：若白名单有效，只保留匹配的类别
-        if whitelist_patterns:
-            matched = False
-            for wp in whitelist_patterns:
-                try:
-                    if re.search(wp, sample_regex):
-                        matched = True
-                        break
-                except re.error:
-                    if wp in sample_regex:
-                        matched = True
-                        break
-            if not matched:
-                continue
+        if not match_whitelist(sample_regex):
+            continue
 
         items = []
         for col_idx, col_name in headers.items():
@@ -666,14 +655,15 @@ def extract_specs_from_standard_rows(ws, sheet_name, whitelist_patterns=None):
 
 
 def match_sample_to_spec(sample_name, specs):
-    """用正则匹配样品名称到规格"""
+    """用预编译正则匹配样品名称到规格"""
     for regex_str, items in specs.items():
-        try:
-            if re.search(regex_str, sample_name):
-                return items
-        except re.error:
-            if regex_str.replace("[Pp]", "P").replace("[AB]", "A") in sample_name \
-               or sample_name.startswith(regex_str.replace("[","").replace("]","").replace(".*","")):
+        pat = get_spec_regex(regex_str)
+        if pat is not None and pat.search(sample_name):
+            return items
+        if pat is None:
+            # 正则无效，模糊匹配
+            simplified = regex_str.replace("[", "").replace("]", "").replace(".*", "")
+            if simplified in sample_name or sample_name.startswith(simplified):
                 return items
     return []
 
@@ -845,9 +835,55 @@ def open_excel(path, password=None):
     return None
 
 
+# ─── 正则缓存（预编译提升性能） ──────────────────────
+_WHITELIST_COMPILED = None  # [re.Pattern, ...] or None
+_SPEC_REGEX_CACHE = {}      # {regex_str: re.Pattern}
+
+def compile_whitelist():
+    """预编译白名单正则表达式"""
+    global _WHITELIST_COMPILED
+    filter_config = CONFIG.get("filter", {})
+    enabled = filter_config.get("whitelist_enabled", False)
+    if not enabled:
+        _WHITELIST_COMPILED = None
+        return None
+    patterns = filter_config.get("whitelist_patterns", [])
+    if not patterns:
+        _WHITELIST_COMPILED = None
+        return None
+    compiled = []
+    for wp in patterns:
+        try:
+            compiled.append(re.compile(wp))
+        except re.error:
+            compiled.append(None)
+    _WHITELIST_COMPILED = compiled
+    return compiled
+
+def match_whitelist(sample_name):
+    """用预编译白名单判断样品名是否匹配"""
+    global _WHITELIST_COMPILED
+    if _WHITELIST_COMPILED is None:
+        return True
+    for pat in _WHITELIST_COMPILED:
+        if pat is None:
+            continue
+        if pat.search(sample_name):
+            return True
+    return False
+
+def get_spec_regex(regex_str):
+    """获取/缓存编译后的规格正则"""
+    if regex_str not in _SPEC_REGEX_CACHE:
+        try:
+            _SPEC_REGEX_CACHE[regex_str] = re.compile(regex_str)
+        except re.error:
+            _SPEC_REGEX_CACHE[regex_str] = None
+    return _SPEC_REGEX_CACHE[regex_str]
+
 # ─── 白名单过滤 ──────────────────────────────────────
 def get_whitelist():
-    """获取白名单模式列表（如果启用）"""
+    """获取白名单模式列表（如果启用）（兼容旧接口，返回原始字符串列表）"""
     filter_config = CONFIG.get("filter", {})
     enabled = filter_config.get("whitelist_enabled", False)
     if not enabled:
@@ -869,13 +905,8 @@ def sheet_has_whitelist_match(ws, sheet_name, whitelist_patterns):
         sample_name = str(row[5]).strip() if row[5] else ""
         if not sample_name or sample_name == "None":
             continue
-        for wp in whitelist_patterns:
-            try:
-                if re.search(wp, sample_name):
-                    return True
-            except re.error:
-                if wp in sample_name:
-                    return True
+        if match_whitelist(sample_name):
+            return True
     return False
 
 
@@ -968,19 +999,8 @@ def scan_sheet(ws, sheet_name, specs_cache, whitelist_patterns, db, existing_has
         sample_name = cell_f
 
         # 白名单过滤
-        if whitelist_patterns:
-            matched = False
-            for wp in whitelist_patterns:
-                try:
-                    if re.search(wp, sample_name):
-                        matched = True
-                        break
-                except re.error:
-                    if wp in sample_name:
-                        matched = True
-                        break
-            if not matched:
-                continue
+        if not match_whitelist(sample_name):
+            continue
 
         # 组装行数据
         row_data = {"_sheet": sheet_name}
@@ -1503,6 +1523,7 @@ def main():
     # 校验配置 + 锁文件
     if not skip_validation:
         validate_config()
+    compile_whitelist()
     check_lock()
     import atexit
     atexit.register(release_lock)
