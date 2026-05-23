@@ -2,27 +2,23 @@
   "excel": {
     "files": [
       {
-        "path": "./test.xlsx",
-        "password": null,
+        "path": "Z:\\共享盘\\检测数据\\中控检测日报.xlsx",
+        "password": "你的密码",
         "sheets": [],
-        "exclude_sheets": []
+        "exclude_sheets": ["检测项目表", "样品名称表", "Sheet3"]
       }
     ],
     "path": "Z:\\共享盘\\检测数据\\中控检测日报.xlsx",
-    "password": "2026",
+    "password": "你的密码",
     "sheets": [],
-    "exclude_sheets": [
-      "检测项目表",
-      "样品名称表",
-      "Sheet3"
-    ]
+    "exclude_sheets": ["检测项目表", "样品名称表", "Sheet3"]
   },
   "database": {
     "type": "sqlite",
     "sqlite_path": "./检测数据库.sqlite"
   },
   "filter": {
-    "whitelist_enabled": false,
+    "whitelist_enabled": true,
     "whitelist_patterns": [
       "一浸液[GHIJKL]槽",
       "除铁铝液[IJK]槽",
@@ -32,7 +28,7 @@
     ]
   },
   "feishu": {
-    "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/79af6b32-1682-4a46-9e97-f13f9f35b62a",
+    "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/你的WebHook地址",
     "title": "🔴 检测超限报警",
     "notify_monitor": false
   },

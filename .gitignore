@@ -11,6 +11,9 @@ watchdog.log
 alarm_history.csv
 .watchdog_progress.json
 
+# 配置文件（含隐私信息，不提交）
+config.json
+
 # 临时文件
 *.bak
 tmp/
