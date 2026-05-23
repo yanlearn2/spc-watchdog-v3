@@ -44,6 +44,26 @@
       "alarm_upper": 0.1
     }
   },
+
+  "── 新增 V3.2 配置段 ──────────────────────────────": "",
+
+  "features": {
+    "csv_log": true,
+    "parallel_scan": true,
+    "health_check": true,
+    "lock_file": true,
+    "config_validation": true,
+    "alarm_dedup": true
+  },
+  "scan": {
+    "date_filter": "none",
+    "max_rows": 0
+  },
+  "alarm": {
+    "cooldown_minutes": 30,
+    "dedup_persist": true
+  },
+
   "watch": {
     "interval_seconds": 60,
     "progress_file": "./.watchdog_progress.json",

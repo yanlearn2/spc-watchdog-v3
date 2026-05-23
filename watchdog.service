@@ -1,5 +1,5 @@
 [Unit]
-Description=寒锐钴业 SPC 过程质量监控 Watchdog V3
+Description=寒锐钴业 SPC 过程质量监控 Watchdog V3.2
 Documentation=https://github.com/hanrui-watchdog
 After=network-online.target
 Wants=network-online.target

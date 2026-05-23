@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-title 中控检测数据监控报警器 V3.1
+title 中控检测数据监控报警器 V3.2
 
 echo ================================================
-echo   中控检测数据监控报警器 V3.1
+echo   中控检测数据监控报警器 V3.2
 echo   部署脚本
 echo ================================================
 echo.
@@ -60,7 +60,10 @@ echo   2. 运行 run_watchdog.bat 启动监控（前台循环）
 echo   3. 或运行 watchdog.py --daemon 后台运行
 echo   4. 或复制 watchdog.service 到 /etc/systemd/system/（Linux）
 echo.
-echo 🔧 V3.1 新特性:
+echo 🔧 V3.2 新特性:
+echo   · 功能开关（CSV/并行/健康检查/锁文件均可开关）
+echo   · 扫描范围控制（按日期/最大行数过滤）
+echo   · 报警冷却 + DB持久化去重（重启后不丢失）
 echo   · 启动配置校验（自动检查文件/白名单/Webhook）
 echo   · 锁文件机制（防止多实例冲突）
 echo   · 报警去重（同一异常不再重复通知）

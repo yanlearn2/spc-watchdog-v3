@@ -1,4 +1,4 @@
-# 🛡️ 中控检测数据实时监控报警器 Watchdog V3.1
+# 🛡️ 中控检测数据实时监控报警器 Watchdog V3.2
 
 **寒锐钴业 — 过程质量 SPC 异常监控系统**
 
@@ -12,13 +12,16 @@
 |------|------|
 | **规格自动提取** | 从 Excel 标准行自动解析 ≤10、≥80、80~110、(参考) 等规格格式 |
 | **白名单过滤** | 只监控指定样品（正则匹配），跳过无关数据 |
-| **报警去重** | 同一样品同一检测值不重复通知 |
+| **报警去重+冷却** | 同值不重复通知，冷却期内同项目不再报警（可配置） |
 | **规格覆盖** | 不修改 Excel，通过配置单独调整报警阈值 |
 | **Monitor 模式** | 带 `(参考)` 标记的规格仅记录不报警 |
 | **多文件支持** | 同时监控多个 Excel 文件 |
-| **并行扫描** | 多工作表并行处理，提升扫描速度 |
+| **并行/串行扫描** | 可切换并行串行（feature toggle） |
 | **飞书通知** | 通过飞书机器人 Webhook 推送卡片消息，按样品分组展示 |
 | **数据库存储** | SQLite 数据库（可插拔架构，预留 MySQL/PG/飞书多维表格） |
+| **扫描范围控制** | 支持按日期（今天/昨天）、按最大行数限制扫描范围 |
+| **功能开关** | CSV日志、并行扫描、健康检查、锁文件、报警去重均可开关 |
+| **DB持久化去重** | 重启后仍能记住已报警记录 |
 | **日志滚动** | 日志文件自动滚动（≤50MB/个，保留 3 个备份） |
 | **自动重连** | 数据库异常自动重连 |
 | **优雅退出** | Ctrl+C 信号处理后完成当前周期再退出 |
@@ -148,6 +151,51 @@ sudo systemctl start watchdog
 | `database` | `type` | 数据库类型（当前仅 `sqlite`） |
 | `watch` | `interval_seconds` | 扫描间隔（秒） |
 | `log` | `level` | 日志级别（DEBUG/INFO/WARNING/ERROR） |
+
+**V3.2 新增配置段：**
+
+| 配置段 | 字段 | 可选值 | 说明 |
+|--------|------|--------|------|
+| `features` | `csv_log` | `true/false` | 是否写入 CSV 报警记录备份 |
+| | `parallel_scan` | `true/false` | 是否并行扫描多个工作表 |
+| | `health_check` | `true/false` | 是否定期检查数据库连接 |
+| | `lock_file` | `true/false` | 是否启用锁文件防止多实例 |
+| | `config_validation` | `true/false` | 是否启动时校验配置完整性 |
+| | `alarm_dedup` | `true/false` | 是否启用报警去重 |
+| `scan` | `date_filter` | `"none"` / `"today"` / `"yesterday"` | 只扫描指定日期的数据 |
+| | `max_rows` | `0` ~ N | 最多扫描 N 行数据（0=不限） |
+| `alarm` | `cooldown_minutes` | `0` ~ N | 同项目报警冷却时间（分钟），0=不限 |
+| | `dedup_persist` | `true/false` | 重启后从 DB 加载最近报警到冷却缓存 |
+
+### 功能开关示例
+
+```json
+{
+  "features": {
+    "csv_log": true,
+    "parallel_scan": false,
+    "health_check": true,
+    "lock_file": true,
+    "config_validation": true,
+    "alarm_dedup": true
+  },
+  "scan": {
+    "date_filter": "today",
+    "max_rows": 0
+  },
+  "alarm": {
+    "cooldown_minutes": 30,
+    "dedup_persist": true
+  }
+}
+```
+
+- 关闭 `parallel_scan` 可减少打开 Excel 文件句柄数（网络盘场景实用）
+- 关闭 `csv_log` 可减少磁盘 I/O（数据已存入数据库）
+- `date_filter: "today"` 只扫描当天数据，大幅减少扫描量
+- `date_filter: "yesterday"` 补扫前一天数据
+- `max_rows: 200` 只扫描前 200 行（调试/测试用）
+- `cooldown_minutes: 30` 同一项目同值报警后 30 分钟内不再重复通知
 
 ### 白名单示例
 

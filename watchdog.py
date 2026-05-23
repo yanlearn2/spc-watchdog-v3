@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-中控检测数据实时监控报警器 V3.0 — 数据库版
+中控检测数据实时监控报警器 V3.2 — 数据库版
 
 核心能力：
   · 自动识别标准行，从标准行自动提取规格
@@ -58,6 +58,65 @@ def load_config():
         return json.load(f)
 
 CONFIG = load_config()
+
+# ─── 功能开关 ──────────────────────────────────────────
+def is_feature_enabled(name, default=True):
+    """检查功能开关是否启用"""
+    features = CONFIG.get("features", {})
+    return features.get(name, default)
+
+# ─── 扫描范围配置 ──────────────────────────────────────
+def get_scan_config():
+    """获取扫描范围配置"""
+    return CONFIG.get("scan", {"date_filter": "none", "max_rows": 0})
+
+def normalize_date(val):
+    """将各种格式的日期统一为 YYYY-MM-DD 字符串"""
+    if val is None or str(val).strip() in ("", "None"):
+        return None
+    s = str(val).strip()
+    # Excel 序列号 (40000~60000)
+    try:
+        d = float(s)
+        if 40000 < d < 60000:
+            from datetime import datetime, timedelta
+            base = datetime(1899, 12, 30)
+            return (base + timedelta(days=d)).strftime('%Y-%m-%d')
+    except (ValueError, TypeError):
+        pass
+    # ISO 格式: 2026-05-23 或 2026-05-23 10:30:00
+    if len(s) >= 10 and s[4] == '-':
+        return s[:10]
+    # 斜杠格式: 2026/05/23
+    if '/' in s and len(s) >= 10:
+        return s.replace('/', '-')[:10]
+    # 中文格式: 2026年5月23日
+    import re as _re
+    m = _re.search(r'(\d{4})年(\d{1,2})月(\d{1,2})日', s)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+    return s[:10]  # 最佳尝试
+
+def should_include_row_by_date(test_date_str, date_filter):
+    """根据日期过滤判断该行是否需要扫描"""
+    if date_filter == "none":
+        return True
+    normalized = normalize_date(test_date_str)
+    if normalized is None:
+        return True  # 无日期默认包含
+    from datetime import datetime, timedelta
+    today = datetime.now().strftime('%Y-%m-%d')
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    if date_filter == "today":
+        return normalized == today
+    elif date_filter == "yesterday":
+        return normalized == yesterday
+    return True
+
+# ─── 报警冷却配置 ──────────────────────────────────────
+def get_alarm_cooldown():
+    """获取报警冷却时间（分钟），0 表示不冷却"""
+    return CONFIG.get("alarm", {}).get("cooldown_minutes", 0)
 
 # ─── 信号注册 ──────────────────────────────────────────
 signal.signal(signal.SIGINT, signal_handler)
@@ -927,6 +986,9 @@ def scan_sheet(ws, sheet_name, specs_cache, whitelist_patterns, db, existing_has
     empty_count = 0
     max_empty = 100
     BATCH_SIZE = 500
+    scan_cfg = get_scan_config()
+    scan_date_filter = scan_cfg.get("date_filter", "none")
+    scan_max_rows = scan_cfg.get("max_rows", 0)
 
     # 1. 提取/加载规格
     sheet_specs = specs_cache.get(sheet_name)
@@ -1021,6 +1083,12 @@ def scan_sheet(ws, sheet_name, specs_cache, whitelist_patterns, db, existing_has
         if date_col_idx and date_col_idx - 1 < len(row) and row[date_col_idx - 1] is not None:
             test_date = str(row[date_col_idx - 1])
 
+        # 日期过滤：只扫描指定日期的数据
+        if scan_date_filter not in ("none", "") and not should_include_row_by_date(test_date, scan_date_filter):
+            if data_count > 0:
+                data_count -= 1  # 不计入数据行
+            continue
+
         natural_key = (sample_name, test_date)
         existing_hash = existing_hashes.get(natural_key) if test_date else None
 
@@ -1060,6 +1128,11 @@ def scan_sheet(ws, sheet_name, specs_cache, whitelist_patterns, db, existing_has
             ))
 
         all_alarms.extend(alarms)
+
+        # 最大行数限制
+        if scan_max_rows > 0 and data_count >= scan_max_rows:
+            log.info(f"     ⏹ 达到最大行数限制 ({scan_max_rows})，停止扫描")
+            break
 
         # 到达批量阈值 → flush
         if len(sample_batch) >= BATCH_SIZE:
@@ -1433,22 +1506,36 @@ def scan_one_file(file_cfg, existing_hashes, db_specs_dict, db):
             log.error("❌ 扫描 " + sname + " 失败: " + str(e))
             return sname, 0, [], 0, 0
     
-    MAX_WORKERS = min(4, len(sheets_to_scan))
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(scan_one_sheet, sn): sn for sn in sheets_to_scan}
-        for f in as_completed(futures):
-            sname, data_count, alarms, new_rows, elapsed = f.result()
-            total_data += data_count
-            total_new += new_rows
-            for a in alarms:
+    # 并行/串行扫描
+    parallel_enabled = is_feature_enabled("parallel_scan", True)
+    if parallel_enabled and len(sheets_to_scan) > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        MAX_WORKERS = min(4, len(sheets_to_scan))
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+            futures = {pool.submit(scan_one_sheet, sn): sn for sn in sheets_to_scan}
+            for f in as_completed(futures):
+                sname, data_count, alarms, new_rows, elapsed = f.result()
+                total_data += data_count
+                total_new += new_rows
+                for a in alarms:
+                    a["sheet"] = sname
+                all_alarms.extend(alarms)
+                log.info("  ✅ " + sname + " → " + str(data_count) + "行 | 新增" + str(new_rows) + " | 报警" + str(len(alarms)) + " | " + f"{elapsed:.2f}s")
+                if alarms:
+                    for msg in ["     " + a["sample"] + " " + a["item"] + " = " + str(a["value"]) + " " + a.get("unit","") + " (" + a["spec"] + ") [" + a["mode"] + "]" for a in alarms[:5]]:
+                        log.info(msg)
+                    if len(alarms) > 5:
+                        log.info("     ... 共 " + str(len(alarms)) + " 条")
+    else:
+        # 串行扫描
+        for sname in sheets_to_scan:
+            sname, scount, salarms, snew, elapsed = scan_one_sheet(sname)
+            total_data += scount
+            total_new += snew
+            for a in salarms:
                 a["sheet"] = sname
-            all_alarms.extend(alarms)
-            log.info("  ✅ " + sname + " → " + str(data_count) + "行 | 新增" + str(new_rows) + " | 报警" + str(len(alarms)) + " | " + f"{elapsed:.2f}s")
-            if alarms:
-                for msg in ["     " + a["sample"] + " " + a["item"] + " = " + str(a["value"]) + " " + a.get("unit","") + " (" + a["spec"] + ") [" + a["mode"] + "]" for a in alarms[:5]]:
-                    log.info(msg)
-                if len(alarms) > 5:
-                    log.info("     ... 共 " + str(len(alarms)) + " 条")
+            all_alarms.extend(salarms)
+            log.info("  ✅ " + sname + " → " + str(scount) + "行 | 新增" + str(snew) + " | 报警" + str(len(salarms)) + " | " + f"{elapsed:.2f}s")
     
     if total_new > 0:
         log.info("  💾 " + os.path.basename(path) + ": 新增" + str(total_new) + "行, 报警" + str(len(all_alarms)) + "条")
@@ -1486,18 +1573,80 @@ def scan_all(db):
 # ─── 报警去重 ──────────────────────────────────────────
 LAST_ALARM_VALUES = {}  # {(sample, item): (value, time)} 用于去重
 
-def dedup_alarms(alarms):
-    """过滤掉同一样品同一项目与上次扫描值不变的报警"""
+def load_alarm_dedup_from_db(db):
+    """从报警记录加载最近的报警，填充 LAST_ALARM_VALUES，实现跨重启去重"""
+    cooldown_min = get_alarm_cooldown()
+    if cooldown_min <= 0:
+        return
+    try:
+        from datetime import datetime, timedelta
+        since = (datetime.now() - timedelta(minutes=cooldown_min)).strftime('%Y-%m-%d %H:%M:%S')
+        # 取冷却时间内的最新报警记录
+        rows = db.conn.execute(
+            """SELECT sample_name, item, value, alarmed_at FROM alarm_log
+               WHERE alarmed_at >= ? ORDER BY alarmed_at DESC""",
+            (since,)
+        ).fetchall()
+        loaded = 0
+        for r in rows:
+            key = (r[0], r[1])
+            if key not in LAST_ALARM_VALUES:
+                LAST_ALARM_VALUES[key] = (r[2], time.mktime(
+                    datetime.strptime(r[3], '%Y-%m-%d %H:%M:%S').timetuple()
+                ) if r[3] and ' ' in r[3] else 0)
+                loaded += 1
+        if loaded:
+            log.info(f"🔄 从DB加载 {loaded} 条最近报警到冷却缓存 (cooldown={cooldown_min}min)")
+    except Exception as e:
+        log.warning(f"⚠ 加载冷却缓存失败: {e}")
+
+def dedup_alarms(alarms, db=None):
+    """过滤掉已报警过的项目
+
+    - 内存去重：同一样品同一项目检测值不变时不重复通知
+    - DB冷却去重：cooldown_minutes 内同项目已报警过的值不再通知
+    - dedup_persist=True：首次运行时从DB加载最近报警到缓存
+    """
     if not alarms:
         return []
+    
+    # 首次运行时从DB加载冷却缓存
+    if db and is_feature_enabled("dedup_persist", True) and not LAST_ALARM_VALUES:
+        load_alarm_dedup_from_db(db)
+    
     deduped = []
     for a in alarms:
         key = (a.get("sample", ""), a.get("item", ""))
         new_val = a.get("value")
         old_val = LAST_ALARM_VALUES.get(key)
-        if old_val is None or abs(float(new_val) - float(old_val[0])) > 0.0001:
+        
+        if old_val is None:
+            # 全新报警
             deduped.append(a)
             LAST_ALARM_VALUES[key] = (new_val, time.time())
+            continue
+        
+        # 值变化的报警 → 重新通知
+        if abs(float(new_val) - float(old_val[0])) > 0.0001:
+            deduped.append(a)
+            LAST_ALARM_VALUES[key] = (new_val, time.time())
+            continue
+        
+        # 值未变，检查cooldown是否已过期
+        cooldown_min = get_alarm_cooldown()
+        if cooldown_min > 0:
+            elapsed = (time.time() - old_val[1]) / 60
+            if elapsed > cooldown_min:
+                # 冷却期已过 → 重新通知（同一个值）
+                deduped.append(a)
+                LAST_ALARM_VALUES[key] = (new_val, time.time())
+                log.info(f"     🔄 冷却期满 ({elapsed:.0f}min)，重新通知: {a['sample']} / {a['item']}")
+                continue
+    
+    skipped = len(alarms) - len(deduped)
+    if skipped:
+        log.info(f"     🔇 去重跳过 {skipped} 条已报警记录 (冷却={get_alarm_cooldown()}min)")
+    
     return deduped
 
 def main():
@@ -1521,12 +1670,13 @@ def main():
         return
 
     # 校验配置 + 锁文件
-    if not skip_validation:
+    if not skip_validation and is_feature_enabled("config_validation", True):
         validate_config()
     compile_whitelist()
-    check_lock()
-    import atexit
-    atexit.register(release_lock)
+    if is_feature_enabled("lock_file", True):
+        check_lock()
+        import atexit
+        atexit.register(release_lock)
 
     # 创建数据库连接
     db_config = CONFIG.get("database", {"type": "sqlite", "sqlite_path": "./检测数据库.sqlite"})
@@ -1564,10 +1714,11 @@ def main():
     # 一次模式
     if once:
         alarms = scan_all(db)
-        alarms = dedup_alarms(alarms)
+        alarms = dedup_alarms(alarms, db)
         if alarms:
             send_feishu(alarms, "单次扫描")
-            write_alarm_log(alarms)
+            if is_feature_enabled("csv_log", True):
+                write_alarm_log(alarms)
             monitor = [a for a in alarms if a.get("mode") == "monitor"]
             if monitor:
                 log.info(f"📝 Monitor记录: {len(monitor)} 条（仅记录，未通知）")
@@ -1587,10 +1738,11 @@ def main():
     while not STOP_FLAG:
         try:
             alarms = scan_all(db)
-            alarms = dedup_alarms(alarms)
+            alarms = dedup_alarms(alarms, db)
             if alarms:
                 send_feishu(alarms, "多文件监控")
-                write_alarm_log(alarms)
+                if is_feature_enabled("csv_log", True):
+                    write_alarm_log(alarms)
                 monitor = [a for a in alarms if a.get("mode") == "monitor"]
                 if monitor:
                     log.info(f"📝 Monitor记录: {len(monitor)} 条（仅记录，未通知）")
@@ -1598,18 +1750,19 @@ def main():
                 log.debug("✅ 无报警")
 
             # 定期DB健康检查
-            health_counter += 1
-            if health_counter >= health_interval:
-                try:
-                    db.get_sample_count()
-                except Exception as e:
-                    log.error(f"❌ DB连接异常，尝试重连: {e}")
-                    db.close()
-                    db_config = CONFIG.get("database", {"type": "sqlite", "sqlite_path": "./检测数据库.sqlite"})
-                    db = create_backend(db_config)
-                    db.init_schema()
-                    log.info("✅ DB重连成功")
-                health_counter = 0
+            if is_feature_enabled("health_check", True):
+                health_counter += 1
+                if health_counter >= health_interval:
+                    try:
+                        db.get_sample_count()
+                    except Exception as e:
+                        log.error(f"❌ DB连接异常，尝试重连: {e}")
+                        db.close()
+                        db_config = CONFIG.get("database", {"type": "sqlite", "sqlite_path": "./检测数据库.sqlite"})
+                        db = create_backend(db_config)
+                        db.init_schema()
+                        log.info("✅ DB重连成功")
+                    health_counter = 0
 
         except Exception as e:
             log.error(f"❌ 执行异常: {e}", exc_info=True)
